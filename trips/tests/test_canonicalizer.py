@@ -230,7 +230,7 @@ def test_canonicalize_conflicting_location_rejected():
         },
     ]
     csv_data = create_csv_content(rows)
-    canonicalizer = StationCanonicalizer(reject_location_conflicts=True)
+    canonicalizer = StationCanonicalizer()
     stations, summary = canonicalizer.process_csv(io.StringIO(csv_data))
 
     assert len(stations) == 0

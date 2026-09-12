@@ -14,6 +14,10 @@ CENSUS_BATCH_URL = "https://geocoding.geo.census.gov/geocoder/locations/addressb
 BATCH_SIZE = 10000
 
 
+class CensusGeocodingError(Exception):
+    pass
+
+
 @dataclass(frozen=True)
 class GeocodedStationResult:
     station: CanonicalStation
@@ -61,7 +65,6 @@ class CensusBatchGeocoder:
         }
         data = {
             "benchmark": "Public_AR_Current",
-            "vintage": "Current_Current",
         }
 
         try:
@@ -74,7 +77,9 @@ class CensusBatchGeocoder:
             response.raise_for_status()
         except requests.RequestException as e:
             logger.error(f"Census batch geocoder request failed: {e}")
-            return {}
+            raise CensusGeocodingError(
+                f"Census batch geocoding service request failed: {e}"
+            ) from e
 
         return self._parse_census_response(response.text)
 
@@ -117,7 +122,7 @@ class StationGeocoder:
     def geocode_stations(
         self, stations: List[CanonicalStation]
     ) -> List[GeocodedStationResult]:
-        # Step 1: Batch address geocoding via Census API
+        # Step 1: Batch address geocoding via Census API (raises CensusGeocodingError if network/HTTP fails)
         address_matches = self.batch_geocoder.geocode_batch(stations)
 
         results: List[GeocodedStationResult] = []
