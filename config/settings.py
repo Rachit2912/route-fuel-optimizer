@@ -73,7 +73,7 @@ USE_TZ = True
 STATIC_URL = "static/"
 
 OPENROUTESERVICE_API_KEY = os.getenv("OPENROUTESERVICE_API_KEY", "")
-OPENROUTESERVICE_BASE_URL = os.getenv("OPENROUTESERVICE_BASE_URL", "https://api.openrouteservice.org")
+OPENROUTESERVICE_BASE_URL = os.getenv("OPENROUTESERVICE_BASE_URL", "https://api.heigit.org")
 
 REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "trips.exceptions.custom_exception_handler",
