@@ -3,7 +3,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from trips.station_data.canonicalizer import CSVValidationError, StationCanonicalizer
 from trips.station_data.gazetteer import CensusPlaceResolver
-from trips.station_data.geocoding import StationGeocoder
+from trips.station_data.geocoding import CensusGeocodingError, StationGeocoder
 from trips.station_data.repository import FuelStationRepository
 
 
@@ -52,7 +52,10 @@ class Command(BaseCommand):
 
         # Step 3: Geocode stations
         station_geocoder = StationGeocoder(place_resolver=place_resolver)
-        geocoded_results = station_geocoder.geocode_stations(canonical_stations)
+        try:
+            geocoded_results = station_geocoder.geocode_stations(canonical_stations)
+        except CensusGeocodingError as e:
+            raise CommandError(f"Census geocoding failed: {e}. Import aborted.") from e
 
         address_geocoded_count = sum(
             1 for r in geocoded_results if r.geocode_source == "census_address"

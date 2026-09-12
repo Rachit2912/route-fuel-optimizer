@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 import io
 import logging
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +29,6 @@ REQUIRED_CSV_COLUMNS = [
 
 
 class CSVValidationError(Exception):
-    pass
-
-
-class LocationConflictError(Exception):
     pass
 
 
@@ -62,9 +58,6 @@ class CanonicalizationSummary:
 
 
 class StationCanonicalizer:
-    def __init__(self, reject_location_conflicts: bool = True):
-        self.reject_location_conflicts = reject_location_conflicts
-
     def process_csv(
         self, csv_file_or_path: io.TextIOBase | str
     ) -> Tuple[List[CanonicalStation], CanonicalizationSummary]:
@@ -156,10 +149,6 @@ class StationCanonicalizer:
                     f"OPIS ID {opis_id} has conflicting location metadata: "
                     f"addresses={addresses}, cities={cities}, states={states}, rack_ids={rack_ids}"
                 )
-                if not self.reject_location_conflicts:
-                    raise LocationConflictError(
-                        f"OPIS ID {opis_id} has conflicting location identity."
-                    )
                 continue
 
             # Deterministic canonical name selection:
