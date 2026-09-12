@@ -25,9 +25,17 @@ class OpenRouteServiceProvider(BaseRoutingProvider):
     ):
         self.api_key = api_key or getattr(settings, "OPENROUTESERVICE_API_KEY", "")
         self.base_url = (
-            base_url or getattr(settings, "OPENROUTESERVICE_BASE_URL", "https://api.openrouteservice.org")
+            base_url or getattr(settings, "OPENROUTESERVICE_BASE_URL", "https://api.heigit.org")
         ).rstrip("/")
         self.timeout = timeout
+
+    @property
+    def geocode_url(self) -> str:
+        return f"{self.base_url}/pelias/v1/search"
+
+    @property
+    def routing_url(self) -> str:
+        return f"{self.base_url}/openrouteservice/v2/directions/driving-car/geojson"
 
     def _get_headers(self) -> Dict[str, str]:
         headers = {"Accept": "application/json, application/geo+json"}
@@ -36,10 +44,8 @@ class OpenRouteServiceProvider(BaseRoutingProvider):
         return headers
 
     def geocode(self, location: str) -> ResolvedLocation:
-        url = f"{self.base_url}/geocode/search"
+        url = self.geocode_url
         params = {"text": location}
-        if self.api_key:
-            params["api_key"] = self.api_key
 
         try:
             response = requests.get(
@@ -89,7 +95,7 @@ class OpenRouteServiceProvider(BaseRoutingProvider):
     def get_route(
         self, start: ResolvedLocation, finish: ResolvedLocation
     ) -> RouteResult:
-        url = f"{self.base_url}/v2/directions/driving-car/geojson"
+        url = self.routing_url
         payload = {
             "coordinates": [
                 [start.lon, start.lat],
@@ -99,15 +105,10 @@ class OpenRouteServiceProvider(BaseRoutingProvider):
         headers = self._get_headers()
         headers["Content-Type"] = "application/json"
 
-        params = {}
-        if self.api_key:
-            params["api_key"] = self.api_key
-
         try:
             response = requests.post(
                 url,
                 json=payload,
-                params=params,
                 headers=headers,
                 timeout=self.timeout,
             )
