@@ -29,9 +29,24 @@ def sample_station():
     )
 
 
+@pytest.fixture
+def second_station():
+    return CanonicalStation(
+        opis_id=200,
+        name="Loves Stop",
+        address="456 Highway 1",
+        city="Dallas",
+        state="TX",
+        rack_id=2,
+        effective_price=Decimal("3.2000"),
+        price_min=Decimal("3.2000"),
+        price_max=Decimal("3.2000"),
+        price_observation_count=1,
+        source_row_count=1,
+    )
+
+
 def test_census_batch_geocoder_success(sample_station):
-    # Mock census response format
-    # "100","123 Main St, Chicago, IL, ","Match","Exact","123 MAIN ST, CHICAGO, IL, 60601","-87.6298,41.8781","123456","R"
     mock_csv_response = '"100","123 Main St","Match","Exact","123 MAIN ST, CHICAGO, IL","-87.6298,41.8781","1234","R"\n'
 
     mock_response = MagicMock()
@@ -60,6 +75,38 @@ def test_census_batch_geocoder_no_match(sample_station):
     with patch("requests.post", return_value=mock_response):
         results = geocoder.geocode_batch([sample_station])
         assert 100 not in results
+
+
+def test_census_batch_geocoder_malformed_response(sample_station):
+    # Corrupt row with missing match column
+    mock_csv_response = '"100","123 Main St"\n'
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = mock_csv_response
+
+    geocoder = CensusBatchGeocoder()
+
+    with patch("requests.post", return_value=mock_response):
+        with pytest.raises(CensusGeocodingError) as exc_info:
+            geocoder.geocode_batch([sample_station])
+        assert "Malformed row" in str(exc_info.value)
+
+
+def test_census_batch_geocoder_partial_response(sample_station, second_station):
+    # Submit 2 stations (100 and 200), but Census response only contains 100
+    mock_csv_response = '"100","123 Main St","Match","Exact","123 MAIN ST, CHICAGO, IL","-87.6298,41.8781","1234","R"\n'
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = mock_csv_response
+
+    geocoder = CensusBatchGeocoder()
+
+    with patch("requests.post", return_value=mock_response):
+        with pytest.raises(CensusGeocodingError) as exc_info:
+            geocoder.geocode_batch([sample_station, second_station])
+        assert "Partial Census batch response" in str(exc_info.value)
 
 
 def test_census_batch_geocoder_request_exception(sample_station):

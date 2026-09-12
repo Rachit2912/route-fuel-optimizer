@@ -81,31 +81,71 @@ class CensusBatchGeocoder:
                 f"Census batch geocoding service request failed: {e}"
             ) from e
 
-        return self._parse_census_response(response.text)
+        return self._parse_census_response(response.text, chunk)
 
     def _parse_census_response(
-        self, response_text: str
+        self, response_text: str, chunk: List[CanonicalStation]
     ) -> Dict[int, Tuple[float, float]]:
+        submitted_ids = {s.opis_id for s in chunk}
+        received_ids = set()
         results: Dict[int, Tuple[float, float]] = {}
-        reader = csv.reader(io.StringIO(response_text))
 
-        for row in reader:
-            if not row or len(row) < 6:
-                continue
+        try:
+            reader = csv.reader(io.StringIO(response_text))
+            for row in reader:
+                if not row:
+                    continue  # Ignore empty line
 
-            try:
-                opis_id = int(row[0].strip())
+                if len(row) < 3:
+                    raise CensusGeocodingError("Malformed row in Census batch geocoding response.")
+
+                raw_id = row[0].strip()
+                try:
+                    opis_id = int(raw_id)
+                except ValueError as e:
+                    raise CensusGeocodingError(f"Invalid station ID '{raw_id}' in Census response.") from e
+
+                if opis_id not in submitted_ids:
+                    raise CensusGeocodingError(
+                        f"Unexpected station ID '{opis_id}' in Census response (not in submitted batch)."
+                    )
+
+                if opis_id in received_ids:
+                    raise CensusGeocodingError(
+                        f"Duplicate station ID '{opis_id}' in Census batch response."
+                    )
+
+                received_ids.add(opis_id)
                 match_status = row[2].strip().lower()
 
                 if match_status == "match":
-                    coords_str = row[5].strip()  # Format: "lon,lat"
-                    if "," in coords_str:
+                    if len(row) < 6:
+                        raise CensusGeocodingError(f"Missing coordinate data for station ID '{opis_id}' in Census match response.")
+                    coords_str = row[5].strip()
+                    if "," not in coords_str:
+                        raise CensusGeocodingError(f"Invalid coordinates string '{coords_str}' for station ID '{opis_id}'.")
+                    try:
                         lon_str, lat_str = coords_str.split(",")
                         lon = float(lon_str.strip())
                         lat = float(lat_str.strip())
                         results[opis_id] = (lat, lon)
-            except (ValueError, IndexError):
-                continue
+                    except ValueError as e:
+                        raise CensusGeocodingError(f"Malformed coordinate values for station ID '{opis_id}'.") from e
+                elif match_status in ("no_match", "tie", "exact", "non_exact"):
+                    # Valid no-match or non-exact match with no coordinates
+                    pass
+                else:
+                    raise CensusGeocodingError(
+                        f"Unrecognized match status '{row[2]}' for station ID '{opis_id}' in Census response."
+                    )
+        except csv.Error as e:
+            raise CensusGeocodingError("Malformed CSV response from Census geocoding service.") from e
+
+        if received_ids != submitted_ids:
+            missing_ids = submitted_ids - received_ids
+            raise CensusGeocodingError(
+                f"Partial Census batch response: missing results for submitted station IDs {sorted(list(missing_ids))}."
+            )
 
         return results
 
@@ -122,7 +162,7 @@ class StationGeocoder:
     def geocode_stations(
         self, stations: List[CanonicalStation]
     ) -> List[GeocodedStationResult]:
-        # Step 1: Batch address geocoding via Census API (raises CensusGeocodingError if network/HTTP fails)
+        # Step 1: Batch address geocoding via Census API (raises CensusGeocodingError if network/HTTP or malformed/partial response occurs)
         address_matches = self.batch_geocoder.geocode_batch(stations)
 
         results: List[GeocodedStationResult] = []
