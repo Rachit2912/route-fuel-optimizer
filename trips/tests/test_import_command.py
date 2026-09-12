@@ -1,6 +1,7 @@
 from decimal import Decimal
 import io
 import tempfile
+from unittest.mock import patch
 
 from django.core.management import call_command
 from django.core.management.base import CommandError
@@ -8,7 +9,7 @@ import pytest
 
 from trips.models import FuelStation
 from trips.station_data.canonicalizer import CanonicalStation
-from trips.station_data.geocoding import GeocodedStationResult
+from trips.station_data.geocoding import CensusGeocodingError, GeocodedStationResult
 from trips.station_data.repository import FuelStationRepository
 
 
@@ -68,12 +69,46 @@ def test_import_command_success():
         csv_path = tf.name
 
     out = io.StringIO()
-    call_command("import_fuel_stations", f"--csv={csv_path}", stdout=out)
+    with patch(
+        "trips.station_data.geocoding.CensusBatchGeocoder.geocode_batch",
+        return_value={500: (41.8781, -87.6298)},
+    ) as mock_geocode:
+        call_command("import_fuel_stations", f"--csv={csv_path}", stdout=out)
+        mock_geocode.assert_called_once()
 
     output = out.getvalue()
     assert "Fuel Station Import Complete!" in output
     assert "Database rows created:       1" in output
     assert FuelStation.objects.filter(opis_id=500).exists()
+    st = FuelStation.objects.get(opis_id=500)
+    assert st.latitude == 41.8781
+    assert st.longitude == -87.6298
+    assert st.geocode_source == "census_address"
+
+
+@pytest.mark.django_db
+def test_import_command_geocoding_failure_aborts_without_persisting():
+    csv_content = (
+        "OPIS Truckstop ID,Truckstop Name,Address,City,State,Rack ID,Retail Price\n"
+        "600,Speedway,456 Exit Road,Detroit,MI,5,3.2000\n"
+    )
+
+    with tempfile.NamedTemporaryFile("w+", suffix=".csv", delete=False) as tf:
+        tf.write(csv_content)
+        tf.flush()
+        csv_path = tf.name
+
+    out = io.StringIO()
+    with patch(
+        "trips.station_data.geocoding.CensusBatchGeocoder.geocode_batch",
+        side_effect=CensusGeocodingError("Service unavailable"),
+    ):
+        with pytest.raises(CommandError) as exc_info:
+            call_command("import_fuel_stations", f"--csv={csv_path}", stdout=out)
+
+        assert "Census geocoding failed" in str(exc_info.value)
+        # Verify nothing was persisted
+        assert not FuelStation.objects.filter(opis_id=600).exists()
 
 
 @pytest.mark.django_db

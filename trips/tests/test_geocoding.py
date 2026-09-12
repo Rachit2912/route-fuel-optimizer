@@ -7,6 +7,7 @@ from trips.station_data.canonicalizer import CanonicalStation
 from trips.station_data.gazetteer import CensusPlaceResolver
 from trips.station_data.geocoding import (
     CensusBatchGeocoder,
+    CensusGeocodingError,
     StationGeocoder,
 )
 
@@ -65,8 +66,8 @@ def test_census_batch_geocoder_request_exception(sample_station):
     geocoder = CensusBatchGeocoder()
 
     with patch("requests.post", side_effect=requests.RequestException("Connection error")):
-        results = geocoder.geocode_batch([sample_station])
-        assert results == {}
+        with pytest.raises(CensusGeocodingError):
+            geocoder.geocode_batch([sample_station])
 
 
 def test_gazetteer_place_resolver_suffix_and_resolution():
