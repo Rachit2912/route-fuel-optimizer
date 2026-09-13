@@ -130,6 +130,19 @@ def test_gazetteer_place_resolver_suffix_and_resolution():
     assert resolver.resolve("UnknownCity", "IL") is None
 
 
+def test_gazetteer_pipe_delimited_parsing():
+    pipe_gazetteer_content = (
+        "USPS|GEOID|NAME|INTPTLAT|INTPTLONG\n"
+        "IL|1714000|Chicago city|41.8781|-87.6298\n"
+        "TX|4819000|Dallas city|32.7767|-96.7970\n"
+    )
+    resolver = CensusPlaceResolver()
+    resolver.load_gazetteer_file(pipe_gazetteer_content)
+
+    assert resolver.resolve("Chicago", "IL") == (41.8781, -87.6298)
+    assert resolver.resolve("Dallas", "TX") == (32.7767, -96.7970)
+
+
 def test_gazetteer_ambiguous_city_returns_none():
     gazetteer_content = (
         "USPS\tNAME\tINTPTLAT\tINTPTLONG\n"
