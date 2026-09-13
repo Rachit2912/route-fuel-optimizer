@@ -1,3 +1,4 @@
+import time
 from django.core.management.base import BaseCommand
 
 from trips.providers.openrouteservice import OpenRouteServiceProvider
@@ -35,31 +36,55 @@ class Command(BaseCommand):
         finish_input = options["finish"]
         corridor_miles = options["corridor"]
 
+        total_start_time = time.perf_counter()
+
+        # Step 1: Geocoding + Routing API calls
+        t0 = time.perf_counter()
         provider = OpenRouteServiceProvider()
         geocoding_service = GeocodingService(provider)
         routing_service = RoutingService(provider)
 
-        self.stdout.write(f"Geocoding start: '{start_input}'...")
         start_loc = geocoding_service.resolve(start_input)
-
-        self.stdout.write(f"Geocoding finish: '{finish_input}'...")
         finish_loc = geocoding_service.resolve(finish_input)
-
-        self.stdout.write("Fetching driving route...")
         route_result = routing_service.calculate_route(start_loc, finish_loc)
+        geocoding_routing_time = time.perf_counter() - t0
 
         coords = route_result.geometry.get("coordinates", [])
-        self.stdout.write(f"Route total distance: {route_result.distance_miles} miles")
-        self.stdout.write(f"Route coordinate count: {len(coords)} points")
 
+        # Step 2: Load stations from database
+        t1 = time.perf_counter()
         repository = FuelStationRepository()
         geocoded_stations = repository.list_geocoded_stations()
-        self.stdout.write(f"Geocoded stations in DB considered: {len(geocoded_stations)}")
+        db_load_time = time.perf_counter() - t1
 
+        # Step 3: Match stations to route
+        t2 = time.perf_counter()
         matcher = RouteStationMatcher(corridor_miles=corridor_miles, repository=repository)
         matched_candidates = matcher.match_stations_to_route(coords, stations=geocoded_stations)
+        station_matching_time = time.perf_counter() - t2
 
-        self.stdout.write(self.style.SUCCESS(f"\nMatched candidate stations within {corridor_miles}-mile corridor: {len(matched_candidates)}"))
+        total_time = time.perf_counter() - total_start_time
+
+        stats = matcher.last_stats
+
+        self.stdout.write(self.style.SUCCESS("\n--- Smoke Test Results ---"))
+        self.stdout.write(f"Start:                      {start_input} ({start_loc.label})")
+        self.stdout.write(f"Finish:                     {finish_input} ({finish_loc.label})")
+        self.stdout.write(f"Route total distance:       {route_result.distance_miles} miles")
+        self.stdout.write(f"Route coordinate count:      {len(coords)} points")
+        self.stdout.write(f"Corridor miles tolerance:   {corridor_miles} miles")
+
+        self.stdout.write("\n--- Counts ---")
+        self.stdout.write(f"geocoded stations loaded:   {stats.get('stations_loaded', 0)}")
+        self.stdout.write(f"stations surviving global bbox: {stats.get('surviving_global_bbox', 0)}")
+        self.stdout.write(f"exact segment comparisons performed: {stats.get('exact_segment_comparisons', 0)}")
+        self.stdout.write(f"matched station count:      {stats.get('matched_stations', 0)}")
+
+        self.stdout.write("\n--- Timings ---")
+        self.stdout.write(f"geocoding + routing time:   {geocoding_routing_time:.3f}s")
+        self.stdout.write(f"station DB load time:       {db_load_time:.3f}s")
+        self.stdout.write(f"station matching time:      {station_matching_time:.3f}s")
+        self.stdout.write(f"total time:                 {total_time:.3f}s")
 
         if matched_candidates:
             self.stdout.write("\nFirst 5 matched candidate stations:")
