@@ -1,6 +1,5 @@
 import csv
 import io
-import os
 import re
 from typing import Dict, List, Optional, Tuple
 
@@ -60,7 +59,14 @@ class CensusPlaceResolver:
         if not lines:
             return
 
-        delimiter = "\t" if "\t" in lines[0] else ","
+        first_line = lines[0]
+        if "|" in first_line:
+            delimiter = "|"
+        elif "\t" in first_line:
+            delimiter = "\t"
+        else:
+            delimiter = ","
+
         reader = csv.DictReader(io.StringIO(content), delimiter=delimiter)
 
         for row in reader:
