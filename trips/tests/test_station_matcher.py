@@ -160,6 +160,52 @@ def test_corridor_station_near_bbox_but_outside_corridor():
     assert len(matched) == 0
 
 
+def test_chunk_index_matching_matches_brute_force():
+    # Synthetic route with 150 points (spanning ~1.5 degrees lat)
+    coords = [[-87.0, 41.0 + (i * 0.01)] for i in range(150)]
+    rg = RouteGeometry(coords)
+
+    # Station near segment 50 (lat 41.50)
+    st_lat, st_lon = 41.502, -86.99
+    chunk_res, comparisons = rg.find_nearest_point_within_corridor(st_lat, st_lon, 10.0)
+    brute_res = rg.find_nearest_point_on_route(st_lat, st_lon)
+
+    assert chunk_res is not None
+    assert math.isclose(chunk_res[0], brute_res[0], rel_tol=1e-9)
+    assert math.isclose(chunk_res[1], brute_res[1], rel_tol=1e-9)
+    # Number of comparisons performed must be significantly fewer than 149 total segments
+    assert comparisons < 149
+
+
+def test_station_near_chunk_boundary_is_not_missed():
+    # Route with 65 points (creates multiple chunks of CHUNK_SIZE=32)
+    coords = [[-87.0 + (i * 0.01), 41.0] for i in range(65)]
+    rg = RouteGeometry(coords)
+
+    # Station near boundary point 32 (-86.68, 41.0)
+    st_lat, st_lon = 41.02, -86.68
+    chunk_res, _ = rg.find_nearest_point_within_corridor(st_lat, st_lon, 10.0)
+    brute_res = rg.find_nearest_point_on_route(st_lat, st_lon)
+
+    assert chunk_res is not None
+    assert math.isclose(chunk_res[0], brute_res[0], rel_tol=1e-9)
+    assert math.isclose(chunk_res[1], brute_res[1], rel_tol=1e-9)
+
+
+def test_multiple_nearby_chunks_select_true_nearest_segment():
+    coords = [[-87.0 + (i * 0.01), 41.0 + (i * 0.001)] for i in range(100)]
+    station = create_dummy_station(100, 41.05, -86.5)
+
+    matcher = RouteStationMatcher(corridor_miles=10.0)
+    matched = matcher.match_stations_to_route(coords, stations=[station])
+
+    assert len(matched) == 1
+    rg = RouteGeometry(coords)
+    brute_off, brute_mile = rg.find_nearest_point_on_route(41.05, -86.5)
+    assert math.isclose(matched[0].off_route_miles, brute_off, rel_tol=1e-9)
+    assert math.isclose(matched[0].mile_along_route, brute_mile, rel_tol=1e-9)
+
+
 def test_mile_along_route_beginning_middle_end():
     coords = [
         [-87.0, 41.0],
