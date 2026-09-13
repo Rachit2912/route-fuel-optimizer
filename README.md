@@ -106,34 +106,61 @@ python manage.py migrate
 
 ## Import the fuel-station dataset
 
-The provided assessment CSV is included as:
+The repository includes the assessment fuel-price CSV:
 
 ```text
 fuel-prices-for-be-assessment.csv
 ```
 
-### Recommended: import with Census Places fallback
+For Census place-centroid fallback, this project uses the U.S. Census **2025 National Places Gazetteer**.
 
-The raw dataset contains many highway/exit-style addresses that do not resolve as normal street addresses. For better station coverage, download the U.S. Census **National Places Gazetteer** and extract its text file.
+The exact file used during development is also included in the repository root as:
 
-Census Gazetteer page:
-https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html
+```text
+2025_Gaz_place_national.txt
+```
 
-For example, the national Places file can be passed to the importer as follows:
+So the recommended import works immediately after cloning:
 
 ```bash
 python manage.py import_fuel_stations \
   --csv fuel-prices-for-be-assessment.csv \
-  --gazetteer /path/to/2025_Gaz_place_national.txt
+  --gazetteer 2025_Gaz_place_national.txt
 ```
+
+The Gazetteer is used only as a fallback when the Census address geocoder cannot resolve highway/exit-style station addresses.
+
+If the bundled Gazetteer file is ever missing, it can be downloaded again from the official U.S. Census source:
+
+* 2025 Gazetteer page: https://www.census.gov/geographies/reference-files/2025/geo/gazetter-file.html
+* Direct National Places ZIP: https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2025_Gazetteer/2025_Gaz_place_national.zip
+
+After downloading, extract:
+
+```text
+2025_Gaz_place_national.txt
+```
+
+and place it in the repository root before running the import command above.
+
+The import pipeline:
+
+1. validates the supplied CSV,
+2. filters unsupported/non-contiguous-US records,
+3. removes exact duplicate rows,
+4. canonicalizes records by OPIS station ID,
+5. computes `effective_price` from distinct reported prices,
+6. batch-geocodes station addresses using the U.S. Census geocoder,
+7. falls back to Census place-centroid coordinates when address-level geocoding fails,
+8. persists the canonical `FuelStation` records.
 
 The import is idempotent: existing stations are updated rather than duplicated.
 
-On the assessment dataset used during development, preprocessing produced:
+On the supplied assessment dataset, preprocessing produced:
 
 ```text
 Source rows:                 8151
-Exact duplicates removed:     26
+Exact duplicates removed:      26
 Unsupported region rows:      620
 Canonical stations:          6626
 Address geocoded:             526
@@ -141,7 +168,7 @@ City-centroid fallback:      5449
 Unresolved:                   651
 ```
 
-Without `--gazetteer`, the import still works, but highway-style stations that do not match the Census address geocoder remain unresolved and are excluded from route matching.
+Stations that remain unresolved are excluded from runtime route matching.
 
 ## Run the API
 
