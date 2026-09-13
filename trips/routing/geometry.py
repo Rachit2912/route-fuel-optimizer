@@ -85,9 +85,19 @@ class RouteGeometry:
             try:
                 lon = float(coord[0])
                 lat = float(coord[1])
-                parsed_points.append((lat, lon))
             except (ValueError, TypeError) as e:
                 raise ValueError(f"Invalid coordinate numbers at index {idx}: {coord}") from e
+
+            if not math.isfinite(lon) or not math.isfinite(lat):
+                raise ValueError(f"Non-finite coordinate at index {idx}: {coord}")
+
+            if not (-180.0 <= lon <= 180.0):
+                raise ValueError(f"Longitude out of range [-180, 180] at index {idx}: {lon}")
+
+            if not (-90.0 <= lat <= 90.0):
+                raise ValueError(f"Latitude out of range [-90, 90] at index {idx}: {lat}")
+
+            parsed_points.append((lat, lon))
 
         self.points = parsed_points
 
@@ -113,7 +123,7 @@ class RouteGeometry:
     ) -> Tuple[float, float]:
         """
         Finds the nearest point on the route for station (lat, lon).
-        Returns (off_route_miles, mile_along_route).
+        Returns raw full-precision (off_route_miles, mile_along_route).
         """
         station = (lat, lon)
         min_off_route = float("inf")
@@ -129,4 +139,4 @@ class RouteGeometry:
                 min_off_route = off_route
                 best_mile_along = self.cumulative_distances[i] + seg_along
 
-        return round(min_off_route, 2), round(best_mile_along, 2)
+        return min_off_route, best_mile_along
