@@ -1,4 +1,5 @@
 from decimal import Decimal
+import math
 import pytest
 
 from trips.domain.station import MatchedStation
@@ -102,15 +103,42 @@ def test_corridor_station_clearly_inside():
     assert matched[0].off_route_miles < 10.0
 
 
-def test_corridor_station_exactly_at_boundary():
-    # 0.1445 degrees lat at -86.0 lon is ~10.0 miles
+def test_corridor_exact_boundary_and_slightly_greater():
     coords = [[-87.0, 41.0], [-85.0, 41.0]]
-    station = create_dummy_station(3, 41.1445, -86.0)
-    matcher = RouteStationMatcher(corridor_miles=10.0)
+    station = create_dummy_station(3, 41.1, -86.0)
 
+    # Compute raw distance for this station
+    rg = RouteGeometry(coords)
+    raw_dist, _ = rg.find_nearest_point_on_route(41.1, -86.0)
+
+    # Exactly equal to corridor -> included
+    matcher_equal = RouteStationMatcher(corridor_miles=raw_dist)
+    matched_equal = matcher_equal.match_stations_to_route(coords, stations=[station])
+    assert len(matched_equal) == 1
+
+    # Slightly less than raw_dist -> excluded
+    matcher_smaller = RouteStationMatcher(corridor_miles=raw_dist - 0.00001)
+    matched_smaller = matcher_smaller.match_stations_to_route(coords, stations=[station])
+    assert len(matched_smaller) == 0
+
+
+def test_corridor_unrounded_precision_regression():
+    # Construct station whose raw distance is ~10.00137 miles (slightly > 10.0 miles)
+    # Under 2-decimal rounding, 10.00137 would round to 10.00 and incorrectly pass <= 10.0.
+    coords = [[-87.0, 41.0], [-85.0, 41.0]]
+    station = create_dummy_station(33, 41.14475, -86.0)
+
+    rg = RouteGeometry(coords)
+    raw_dist, _ = rg.find_nearest_point_on_route(41.14475, -86.0)
+
+    assert round(raw_dist, 2) == 10.00
+    assert raw_dist > 10.0  # True distance > 10.0
+
+    matcher = RouteStationMatcher(corridor_miles=10.0)
     matched = matcher.match_stations_to_route(coords, stations=[station])
-    assert len(matched) == 1
-    assert matched[0].off_route_miles <= 10.0
+
+    # Unrounded check: 10.00137 <= 10.0 is False, so station MUST be excluded!
+    assert len(matched) == 0
 
 
 def test_corridor_station_clearly_outside():
@@ -124,8 +152,6 @@ def test_corridor_station_clearly_outside():
 
 
 def test_corridor_station_near_bbox_but_outside_corridor():
-    # Diagonal segment from (41.0, -87.0) to (42.0, -85.0)
-    # Corner of bbox is (42.0, -87.0) which is in bbox, but ~50 miles from diagonal line
     coords = [[-87.0, 41.0], [-85.0, 42.0]]
     station = create_dummy_station(5, 42.0, -87.0)
     matcher = RouteStationMatcher(corridor_miles=10.0)
@@ -150,7 +176,6 @@ def test_mile_along_route_beginning_middle_end():
     )
 
     assert len(matched) == 3
-    # Check ordering by mile_along_route
     assert matched[0].opis_id == 10
     assert matched[1].opis_id == 11
     assert matched[2].opis_id == 12
@@ -219,10 +244,42 @@ def test_data_quality_precision_metadata_preserved():
     assert s_city.geocode_precision == "city"
 
 
-def test_edge_cases_route_fewer_than_two_coordinates():
+def test_edge_cases_empty_route_and_single_coordinate_raise_value_error():
     matcher = RouteStationMatcher()
+
+    # Empty route []
+    with pytest.raises(ValueError):
+        matcher.match_stations_to_route([])
+
+    # Single coordinate route
     with pytest.raises(ValueError):
         matcher.match_stations_to_route([[-87.0, 41.0]])
+
+
+def test_edge_cases_nan_and_inf_coordinates_raise_value_error():
+    matcher = RouteStationMatcher()
+
+    with pytest.raises(ValueError) as exc_nan:
+        matcher.match_stations_to_route([[-87.0, 41.0], [float("nan"), 41.5]])
+    assert "Non-finite coordinate" in str(exc_nan.value)
+
+    with pytest.raises(ValueError) as exc_inf:
+        matcher.match_stations_to_route([[-87.0, 41.0], [float("inf"), 41.5]])
+    assert "Non-finite coordinate" in str(exc_inf.value)
+
+
+def test_edge_cases_out_of_range_lat_lon_raise_value_error():
+    matcher = RouteStationMatcher()
+
+    # Out of range lon (>180)
+    with pytest.raises(ValueError) as exc_lon:
+        matcher.match_stations_to_route([[-87.0, 41.0], [185.0, 41.5]])
+    assert "Longitude out of range" in str(exc_lon.value)
+
+    # Out of range lat (>90)
+    with pytest.raises(ValueError) as exc_lat:
+        matcher.match_stations_to_route([[-87.0, 41.0], [-85.0, 95.0]])
+    assert "Latitude out of range" in str(exc_lat.value)
 
 
 def test_edge_cases_malformed_coordinate():
@@ -241,7 +298,7 @@ def test_edge_cases_empty_station_set():
 def test_edge_cases_duplicate_route_coordinates_do_not_crash():
     coords = [
         [-87.0, 41.0],
-        [-87.0, 41.0],  # Duplicate point
+        [-87.0, 41.0],
         [-85.0, 41.0],
     ]
     station = create_dummy_station(30, 41.0, -86.0)
