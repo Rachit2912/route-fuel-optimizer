@@ -43,3 +43,11 @@ class FuelStationRepository:
                 updated_count += 1
 
         return created_count, updated_count
+
+    def list_geocoded_stations(self) -> List[FuelStation]:
+        return list(
+            FuelStation.objects.filter(
+                latitude__isnull=False,
+                longitude__isnull=False,
+            )
+        )
