@@ -1,3 +1,4 @@
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, Optional
 
 from trips.domain.location import ResolvedLocation
@@ -16,6 +17,12 @@ USA_COUNTRY_NAMES = {
     "usa",
     "us",
 }
+
+TWO_PLACES = Decimal("0.01")
+
+
+def quantize_currency(amount: Decimal) -> float:
+    return float(amount.quantize(TWO_PLACES, rounding=ROUND_HALF_UP))
 
 
 def is_usa_location(location: ResolvedLocation) -> bool:
@@ -90,7 +97,7 @@ class TripOptimizationService:
                         "arrival_fuel_gallons": round(stop.arrival_fuel_gallons, 2),
                         "gallons_purchased": round(stop.gallons_purchased, 2),
                         "departure_fuel_gallons": round(stop.departure_fuel_gallons, 2),
-                        "fuel_cost_usd": float(stop.fuel_cost_usd),
+                        "fuel_cost_usd": quantize_currency(stop.fuel_cost_usd),
                         "geocode_precision": stop.station.geocode_precision,
                         "geocode_source": stop.station.geocode_source,
                     }
@@ -127,7 +134,7 @@ class TripOptimizationService:
                 "starting_fuel_cost_included": False,
                 "stops": formatted_stops,
                 "total_gallons_purchased": round(fuel_plan.total_gallons_purchased, 2),
-                "total_fuel_cost_usd": float(fuel_plan.total_fuel_cost_usd),
+                "total_fuel_cost_usd": quantize_currency(fuel_plan.total_fuel_cost_usd),
                 "ending_fuel_gallons": round(fuel_plan.ending_fuel_gallons, 2),
             },
             "assumptions": {

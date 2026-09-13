@@ -47,13 +47,13 @@ def test_trip_optimization_success_full_plan(service, mock_provider, mock_repo):
         geometry={"type": "LineString", "coordinates": [[-87.6298, 41.8781], [-80.1918, 25.7617]]},
     )
 
-    # Mock matched stations along route (spaced <= 500 miles apart)
+    # Mock matched stations along route (spaced <= 500 miles apart) with realistic prices
     matched_st1 = MatchedStation(
         opis_id=101,
         name="Pilot Center",
         latitude=36.1627,
         longitude=-86.7816,
-        effective_price=Decimal("3.2000"),
+        effective_price=Decimal("3.2493"),
         mile_along_route=400.0,
         off_route_miles=1.2,
         geocode_source="census_address",
@@ -64,7 +64,7 @@ def test_trip_optimization_success_full_plan(service, mock_provider, mock_repo):
         name="Loves Stop",
         latitude=30.0,
         longitude=-82.0,
-        effective_price=Decimal("3.1000"),
+        effective_price=Decimal("3.1287"),
         mile_along_route=850.0,
         off_route_miles=0.5,
         geocode_source="census_address",
@@ -75,7 +75,7 @@ def test_trip_optimization_success_full_plan(service, mock_provider, mock_repo):
         name="Speedway",
         latitude=27.0,
         longitude=-80.5,
-        effective_price=Decimal("3.1500"),
+        effective_price=Decimal("3.1501"),
         mile_along_route=1200.0,
         off_route_miles=0.8,
         geocode_source="census_address",
@@ -94,9 +94,9 @@ def test_trip_optimization_success_full_plan(service, mock_provider, mock_repo):
             city="Nashville",
             state="TN",
             rack_id=1,
-            effective_price=Decimal("3.2000"),
-            price_min=Decimal("3.2000"),
-            price_max=Decimal("3.2000"),
+            effective_price=Decimal("3.2493"),
+            price_min=Decimal("3.2493"),
+            price_max=Decimal("3.2493"),
             price_observation_count=1,
             source_row_count=1,
             latitude=36.1627,
@@ -132,6 +132,18 @@ def test_trip_optimization_success_full_plan(service, mock_provider, mock_repo):
     assert result["fuel_plan"]["starting_fuel_cost_included"] is False
     assert "total_gallons_purchased" in result["fuel_plan"]
     assert "total_fuel_cost_usd" in result["fuel_plan"]
+
+    # Verify 2-decimal currency quantization
+    total_cost_str = str(result["fuel_plan"]["total_fuel_cost_usd"])
+    if "." in total_cost_str:
+        assert len(total_cost_str.split(".")[1]) <= 2
+
+    for stop in result["fuel_plan"]["stops"]:
+        stop_cost_str = str(stop["fuel_cost_usd"])
+        if "." in stop_cost_str:
+            assert len(stop_cost_str.split(".")[1]) <= 2
+        # Verify price_per_gallon_usd preserves dataset precision (3.2493)
+        assert stop["price_per_gallon_usd"] in (3.2493, 3.1287, 3.1501)
 
     # 5. Check assumptions
     assert result["assumptions"]["route_corridor_miles"] == 10
