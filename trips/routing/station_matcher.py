@@ -23,9 +23,6 @@ class RouteStationMatcher:
         route_coordinates: List[List[float]],
         stations: Optional[List[FuelStation]] = None,
     ) -> List[MatchedStation]:
-        if not route_coordinates:
-            return []
-
         route_geom = RouteGeometry(route_coordinates)
 
         if stations is None:
@@ -34,12 +31,13 @@ class RouteStationMatcher:
         if not stations:
             return []
 
-        # Cheap spatial prefilter: bounding box expanded by corridor margin
-        avg_lat = (route_geom.min_lat + route_geom.max_lat) / 2.0
-        cos_avg_lat = max(0.1, math.cos(math.radians(avg_lat)))
+        # Cheap spatial prefilter: conservative bounding box expansion
+        max_abs_lat = max(abs(route_geom.min_lat), abs(route_geom.max_lat))
+        max_abs_lat = min(89.9, max_abs_lat)
+        cos_max_abs_lat = max(0.001, math.cos(math.radians(max_abs_lat)))
 
-        lat_margin = (self.corridor_miles / 69.0) + 0.05
-        lon_margin = (self.corridor_miles / (69.0 * cos_avg_lat)) + 0.05
+        lat_margin = (self.corridor_miles / 69.0) + 0.001
+        lon_margin = (self.corridor_miles / (69.0 * cos_max_abs_lat)) + 0.001
 
         bbox_min_lat = route_geom.min_lat - lat_margin
         bbox_max_lat = route_geom.max_lat + lat_margin
@@ -63,7 +61,7 @@ class RouteStationMatcher:
                 st.latitude, st.longitude
             )
 
-            # Corridor check: off_route_miles <= corridor_miles
+            # Corridor check: raw unrounded off_route_miles <= corridor_miles
             if off_route_miles <= self.corridor_miles:
                 matched_candidates.append(
                     MatchedStation(
@@ -79,6 +77,6 @@ class RouteStationMatcher:
                     )
                 )
 
-        # Sort candidate stations by mile_along_route ASC
+        # Sort candidate stations by raw mile_along_route ASC
         matched_candidates.sort(key=lambda x: (x.mile_along_route, x.opis_id))
         return matched_candidates

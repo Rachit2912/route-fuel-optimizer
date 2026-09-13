@@ -57,6 +57,54 @@ def test_repository_save_and_idempotency():
 
 
 @pytest.mark.django_db
+def test_repository_list_geocoded_stations_filters_unresolved():
+    # Valid station with lat/lon
+    FuelStation.objects.create(
+        opis_id=1,
+        name="Geocoded Station",
+        address="100 Main",
+        city="Chicago",
+        state="IL",
+        rack_id=1,
+        effective_price=Decimal("3.5000"),
+        price_min=Decimal("3.5000"),
+        price_max=Decimal("3.5000"),
+        price_observation_count=1,
+        source_row_count=1,
+        latitude=41.8781,
+        longitude=-87.6298,
+        geocode_source="census_address",
+        geocode_precision="address",
+    )
+
+    # Unresolved station with null lat/lon
+    FuelStation.objects.create(
+        opis_id=2,
+        name="Unresolved Station",
+        address="Unknown",
+        city="Unknown",
+        state="IL",
+        rack_id=1,
+        effective_price=Decimal("3.5000"),
+        price_min=Decimal("3.5000"),
+        price_max=Decimal("3.5000"),
+        price_observation_count=1,
+        source_row_count=1,
+        latitude=None,
+        longitude=None,
+        geocode_source="unresolved",
+        geocode_precision="unresolved",
+    )
+
+    repo = FuelStationRepository()
+    geocoded = repo.list_geocoded_stations()
+
+    assert len(geocoded) == 1
+    assert geocoded[0].opis_id == 1
+    assert geocoded[0].name == "Geocoded Station"
+
+
+@pytest.mark.django_db
 def test_import_command_success():
     csv_content = (
         "OPIS Truckstop ID,Truckstop Name,Address,City,State,Rack ID,Retail Price\n"
