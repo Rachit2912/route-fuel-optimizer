@@ -45,6 +45,12 @@ class InfeasibleRouteError(DomainException):
     default_message = "No feasible fuel plan could be found for this route."
 
 
+class StationDataUnavailableError(DomainException):
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    default_code = "STATION_DATA_UNAVAILABLE"
+    default_message = "Fuel station database is empty. Please run station preprocessing/import first."
+
+
 class RoutingProviderError(DomainException):
     status_code = status.HTTP_502_BAD_GATEWAY
     default_code = "ROUTING_PROVIDER_ERROR"
