@@ -39,6 +39,12 @@ class RouteNotFoundError(DomainException):
     default_message = "Provider cannot find a drivable route."
 
 
+class InfeasibleRouteError(DomainException):
+    status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+    default_code = "NO_FEASIBLE_FUEL_PLAN"
+    default_message = "No feasible fuel plan could be found for this route."
+
+
 class RoutingProviderError(DomainException):
     status_code = status.HTTP_502_BAD_GATEWAY
     default_code = "ROUTING_PROVIDER_ERROR"
